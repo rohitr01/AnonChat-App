@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user profile information, including username, display name, and blocked users.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "lastActive": { "type": "number" },
+        "sessions": { "type": "array", "items": { "type": "string" } },
+        "blockedUsers": { "type": "array", "items": { "type": "string" } },
+        "email": { "type": "string" }
+      },
+      "required": ["uid", "username", "displayName", "createdAt", "lastActive", "sessions", "blockedUsers"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Represents a message sent in a room or as a direct message.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "content": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "image", "video"] },
+        "mediaUrl": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "roomId": { "type": "string" },
+        "receiverId": { "type": "string" }
+      },
+      "required": ["id", "senderId", "senderName", "content", "type", "createdAt"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Represents a chat room that multiple users can join.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "members": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "name", "createdBy", "createdAt", "members"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Represents an active user session on a device.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "lastActive": { "type": "number" }
+      },
+      "required": ["id", "userId", "deviceId", "deviceName", "createdAt", "lastActive"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles indexed by UID."
+    },
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Chat rooms."
+    },
+    "/rooms/{roomId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a room."
+    },
+    "/direct_messages/{dmId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages in a direct conversation."
+    },
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Active user sessions."
+    }
+  }
+}

@@ -1,0 +1,187 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (UID)
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - username: string (required, immutable)
+    //   - displayName: string (required)
+    //   - photoURL: string (optional)
+    //   - bio: string (optional)
+    //   - createdAt: number (required, immutable)
+    //   - lastActive: number (required)
+    //   - sessions: list (required)
+    //   - blockedUsers: list (required)
+    //   - email: string (optional)
+    //
+    // Collection: rooms
+    // Document ID: roomId
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - createdBy: string (required, immutable)
+    //   - createdAt: number (required, immutable)
+    //   - members: list (required)
+    //
+    // Collection: rooms/{roomId}/messages
+    // Document ID: messageId
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - senderId: string (required, immutable)
+    //   - senderName: string (required)
+    //   - content: string (required)
+    //   - type: string (required, ['text', 'image', 'video'])
+    //   - mediaUrl: string (optional)
+    //   - createdAt: number (required, immutable)
+    //   - roomId: string (required, immutable)
+    //
+    // Collection: sessions
+    // Document ID: sessionId
+    // Fields:
+    //   - id: string (required, immutable)
+    //   - userId: string (required, immutable)
+    //   - deviceId: string (required, immutable)
+    //   - deviceName: string (required)
+    //   - createdAt: number (required, immutable)
+    //   - lastActive: number (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin' ||
+          (request.auth.token.email == "rohitrohajhr@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'username', 'displayName', 'createdAt', 'lastActive', 'sessions', 'blockedUsers']) &&
+             data.uid is string &&
+             data.username is string &&
+             data.displayName is string &&
+             data.createdAt is number &&
+             data.lastActive is number &&
+             data.sessions is list &&
+             data.blockedUsers is list;
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'senderName', 'content', 'type', 'createdAt']) &&
+             data.senderId is string &&
+             data.senderName is string &&
+             data.content is string &&
+             data.type in ['text', 'image', 'video'] &&
+             data.createdAt is number;
+    }
+
+    function isValidRoom(data) {
+      return data.keys().hasAll(['name', 'createdBy', 'createdAt', 'members']) &&
+             data.name is string &&
+             data.createdBy is string &&
+             data.createdAt is number &&
+             data.members is list;
+    }
+
+    function isValidSession(data) {
+      return data.keys().hasAll(['id', 'userId', 'deviceId', 'deviceName', 'createdAt', 'lastActive']) &&
+             data.id is string &&
+             data.userId is string &&
+             data.deviceId is string &&
+             data.deviceName is string &&
+             data.createdAt is number &&
+             data.lastActive is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.username == resource.data.username &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRoom(request.resource.data) &&
+                      request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAuthenticated() && isValidRoom(request.resource.data) &&
+                      (resource.data.createdBy == request.auth.uid || request.auth.uid in request.resource.data.members);
+      allow delete: if isAuthenticated() && resource.data.createdBy == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidMessage(request.resource.data) &&
+                        request.resource.data.senderId == request.auth.uid;
+        allow update: if isAuthenticated() && 
+                        (resource.data.senderId == request.auth.uid || 
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'readBy']));
+        allow delete: if isAuthenticated() && resource.data.senderId == request.auth.uid;
+      }
+
+      match /typing/{userId} {
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId);
+      }
+    }
+
+    match /direct_messages/{dmId} {
+      // dmId is typically sorted_uid1_uid2
+      allow read: if isAuthenticated() && request.auth.uid in dmId.split('_');
+      allow create: if isAuthenticated() && request.auth.uid in dmId.split('_');
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid in dmId.split('_');
+        allow create: if isAuthenticated() && request.auth.uid in dmId.split('_') &&
+                        isValidMessage(request.resource.data) &&
+                        request.resource.data.senderId == request.auth.uid;
+        allow update: if isAuthenticated() && request.auth.uid in dmId.split('_') &&
+                        (resource.data.senderId == request.auth.uid || 
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions', 'readBy']));
+        allow delete: if isAuthenticated() && resource.data.senderId == request.auth.uid;
+      }
+
+      match /typing/{userId} {
+        allow read: if isAuthenticated() && request.auth.uid in dmId.split('_');
+        allow write: if isOwner(userId) && request.auth.uid in dmId.split('_');
+      }
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidSession(request.resource.data) &&
+                      request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidSession(request.resource.data) &&
+                      resource.data.userId == request.auth.uid &&
+                      request.resource.data.userId == resource.data.userId;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+  }
+}

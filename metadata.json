@@ -1,0 +1,5 @@
+{
+  "name": "AnonChat",
+  "description": "A real-time anonymous messaging app with rooms, direct messages, and media sharing.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
